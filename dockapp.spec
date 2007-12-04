@@ -18,7 +18,7 @@ Source:		libdockapp-0.4.0.tar.bz2
 Patch1:		libdockapp-0.4.0.patch.bz2
 URL:		ftp://shadowmere.student.utwente.nl/pub/WindowMaker
 Group:		System/Libraries
-BuildRequires:	XFree86-devel xpm-devel
+BuildRequires:	X11-devel xpm-devel
 BuildRoot:	%{_tmppath}/%{lib_name}-buildroot
 
 %description
