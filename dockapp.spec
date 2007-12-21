@@ -19,6 +19,7 @@ Patch1:		libdockapp-0.4.0.patch.bz2
 URL:		ftp://shadowmere.student.utwente.nl/pub/WindowMaker
 Group:		System/Libraries
 BuildRequires:	X11-devel xpm-devel
+BuildRoot:	%{_tmppath}/%{lib_name}-buildroot
 
 %description
 libDockApp is a rather small library dedicated to writting dock apps
