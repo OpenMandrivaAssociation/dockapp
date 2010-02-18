@@ -4,7 +4,7 @@
 %define lib_name_orig libdockapp
 %define lib_major     0
 %define lib_name      %mklibname %{name} %{lib_major}
-%define	lib_name_devel	%mklibname %{name} %{lib_major} -d
+%define	lib_name_devel	%mklibname %{name} -d
 
 
 # virtual package to enforce naming convention
@@ -40,7 +40,9 @@ linked with %{lib_name_orig}.
 Summary: A library useful for dockapps - development environment
 Group: Development/C
 Requires: %{lib_name} = %{version}
-Provides: %{lib_name_orig}-devel = %{version}-%{release} %{name}-devel = %{version}-%{release}
+Provides: %{lib_name_orig}-devel = %{version}-%{release}
+Provides: %{name}-devel = %{version}-%{release}
+Obsoletes: %{_lib}dockapp0-devel < %{version}-%{release}
 
 %description -n %{lib_name_devel}
 Install %{name} if you need to compile an application with %{lib_name}
@@ -51,12 +53,13 @@ support.
 %patch1 -p1
 
 %build
-%configure
+autoreconf -fi
+%configure2_5x
 %make
 
 %install
 rm -rf $RPM_BUILD_ROOT
-%makeinstall
+%makeinstall_std
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -82,4 +85,3 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libdockapp.la
 %{_libdir}/libdockapp.so
 %{_includedir}/dockapp.h
-
