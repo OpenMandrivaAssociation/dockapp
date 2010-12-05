@@ -1,6 +1,6 @@
 %define name          dockapp
 %define version       0.4.0
-%define release       %mkrel 6
+%define release       %mkrel 7
 %define lib_name_orig libdockapp
 %define lib_major     0
 %define lib_name      %mklibname %{name} %{lib_major}
