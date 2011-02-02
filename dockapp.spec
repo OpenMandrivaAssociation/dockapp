@@ -79,7 +79,7 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 %doc AUTHORS COPYING 
 %{_libdir}/libdockapp.so.%{lib_major}.*
-%{_libdir}/libdockapp.so.%{lib_major)
+%{_libdir}/libdockapp.so.%{lib_major}
 
 %files  -n %{lib_name_devel}
 %defattr(-,root,root)
