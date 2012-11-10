@@ -1,0 +1,298 @@
+diff -r --unified libdockapp-0.4.0/configure.in libdockapp-0.4.0.new/configure.in
+--- libdockapp-0.4.0/configure.in	Sat Feb 12 20:39:51 2000
++++ libdockapp-0.4.0.new/configure.in	Wed Jul 25 17:39:10 2001
+@@ -3,11 +3,9 @@
+ 
+ AM_INIT_AUTOMAKE(libdockapp,0.4.0)
+ 
+-AC_PROG_RANLIB
+-AM_PROG_LIBTOOL
+-
+ dnl Checks for programs.
+ AC_PROG_CC
++AM_PROG_LIBTOOL
+ 
+ dnl Checks for libraries.
+ AC_PATH_XTRA
+diff -r --unified libdockapp-0.4.0/src/dacallback.c libdockapp-0.4.0.new/src/dacallback.c
+--- libdockapp-0.4.0/src/dacallback.c	Sun Feb 13 13:35:45 2000
++++ libdockapp-0.4.0.new/src/dacallback.c	Wed Jul 25 17:39:10 2001
+@@ -25,6 +25,7 @@
+ 
+ extern DACallbacks	d_callbacks;
+ extern int		d_timeout;
++extern int		d_windowed;
+ 
+ void
+ DASetCallbacks(DACallbacks *callbacks)
+@@ -32,14 +33,22 @@
+     long	mask = 0;
+     
+     d_callbacks = *callbacks;
+-    
++
++    mask |= ExposureMask;    
+     if (callbacks->buttonPress)
+ 	mask |= ButtonPressMask;
+     if (callbacks->buttonRelease)
+ 	mask |= ButtonReleaseMask;
+     if (callbacks->motion)
+ 	mask |= PointerMotionMask;
++    if (callbacks->enter)
++	mask |= EnterWindowMask;
++    if (callbacks->leave)
++	mask |= LeaveWindowMask;
++    if (callbacks->destroy)
++	mask != StructureNotifyMask;
+     
++    XSelectInput(DADisplay, DALeader, mask);
+     XSelectInput(DADisplay, DAWindow, mask);
+     XFlush(DADisplay);
+ }
+diff -r --unified libdockapp-0.4.0/src/damain.c libdockapp-0.4.0.new/src/damain.c
+--- libdockapp-0.4.0/src/damain.c	Mon Feb 14 11:08:04 2000
++++ libdockapp-0.4.0.new/src/damain.c	Wed Jul 25 17:39:10 2001
+@@ -23,6 +23,10 @@
+ 
+ #include "dockapp.h"
+ 
++#ifndef MIN
++# define MIN(a,b)	(((a) < (b)) ? (a) : (b))
++#endif
++
+ char		*progName = NULL;
+ int		d_width, d_height;
+ int		d_windowed = 0;
+@@ -36,18 +40,24 @@
+ int			DADepth = 0;
+ Visual			*DAVisual = NULL;
+ GC			DAGC = NULL;
++DARect			DAPreferredIconSizes = {-1, -1, 0, 0};
++
++/* Private prototypes to keep the compiler quiet */
++void DAGetDisplay(char *, int, char **);
++void DACreateIcon(char *, unsigned, unsigned, int, char **);
++void DAProposeIconSize(unsigned, unsigned);
+ 
+ void
+ DAInitialize(char *display, char *name, unsigned width, unsigned height,
+ 	int argc, char **argv)
+ {
+-    XClassHint		*classHint;
+-    XWMHints		*wmHints;
+-    XGCValues		gcv;
+-    
+-    d_width	= width;
+-    d_height	= height;
+-    
++    DAGetDisplay(display, argc, argv);
++    DACreateIcon(name, width, height, argc, argv);
++}
++
++void
++DAGetDisplay(char *display, int argc, char **argv)
++{
+     progName	= argv[0];
+     
+     /* Open Connection to X Server */
+@@ -55,22 +65,108 @@
+     if (!DADisplay) {
+ 	printf("%s: could not open display %s!\n", progName,
+ 		XDisplayName(display));
+-	exit(1);
++	exit(EXIT_FAILURE);
++    }
++}
++
++void
++DAProposeIconSize(unsigned width, unsigned height)
++{
++    XIconSize		*iconSizes;
++    int			nrSizes = 0;
++    
++    /* Get the nearest allowed icon size if the WM specifies such */
++    iconSizes = XAllocIconSize();
++    if (XGetIconSizes(DADisplay, DefaultRootWindow(DADisplay), 
++		&iconSizes, &nrSizes)) {
++	int 	i;
++	int 	da = -1;
++	int 	min_w = -1, min_h = -1;
++	int 	max_w = 0, max_h = 0;
++	
++	for (i = 0; i < nrSizes; i++)  {
++	    int w1, h1, w, h;
++	    
++	    if ((max_w < iconSizes[i].max_width) || 
++		(max_h < iconSizes[i].max_height)) {
++		max_w = iconSizes[i].max_width;
++		max_h = iconSizes[i].max_height;
++	    }
++	    
++		if ((min_w > iconSizes[i].min_width) || 
++		    (min_h > iconSizes[i].min_height) || 
++		    (min_w == -1)) {
++		min_w = iconSizes[i].min_width;
++		min_h = iconSizes[i].min_height;
++	    }
++	    
++	    if ((width  > iconSizes[i].max_width) ||
++		(width  < iconSizes[i].min_width) ||
++		(height > iconSizes[i].max_height) ||
++		(height < iconSizes[i].min_height))
++		continue;
++	    
++	    w1 = (iconSizes[i].max_width  - width ) % iconSizes[i].width_inc;
++	    h1 = (iconSizes[i].max_height - height) % iconSizes[i].height_inc;
++	    w = MIN(w1, iconSizes[i].width_inc  - w1);
++	    h = MIN(h1, iconSizes[i].height_inc - h1);
++	    
++	    if ((w * h < da) || (da == -1)) {
++		d_width  = width  + w;
++		d_height = height + h;
++		da = w * h;
++	    }
++	}
++	
++	DAPreferredIconSizes.x = min_w;
++	DAPreferredIconSizes.y = min_h;
++	DAPreferredIconSizes.width  = max_w;
++	DAPreferredIconSizes.height = max_h;
++	
++	if (da == -1) { /* requested size is out of bounds */
++	    printf("Warning (%s): requested icon-size (%d x %d) is out of the range "
++		    "allowed by the window manager\n",
++		    progName, d_width, d_height);
++	}
+     }
++    XFree(iconSizes);
++}
++
++
++void
++DACreateIcon(char *name, unsigned width, unsigned height, int argc, char **argv)
++{
++    XClassHint		*classHint;
++    XWMHints		*wmHints;
++    XGCValues		gcv;
++    Status		status;
++    XTextProperty	title;
++    
++    
++    d_width  = width;
++    d_height = height;
+     
+     /* Create Windows */
+     DAWindow = XCreateSimpleWindow(DADisplay, DefaultRootWindow(DADisplay),
+-	    0, 0, d_width, d_height, 0, 0, 0);
+-    DALeader = XCreateSimpleWindow(DADisplay, DefaultRootWindow(DADisplay),
+-	    0, 0, 1, 1, 0, 0, 0);
++	    0, 0, width, height, 0, 0, 0);
++    if (d_windowed) {
++    	DALeader = XCreateSimpleWindow(DADisplay, DAWindow,
++	    0, 0, width, height, 0, 0, 0);
++    } else {
++    	DALeader = XCreateSimpleWindow(DADisplay, DefaultRootWindow(DADisplay),
++	    0, 0, width, height, 0, 0, 0);
++    }
+     
+     /* Set ClassHint */
+     if (!(classHint = XAllocClassHint()))
+ 	printf("%s: can't allocate memory for class hints!\n", progName), exit(1);
+-    classHint->res_class = "DockApp";
++    classHint->res_class = name;
+     classHint->res_name = name;
+-    
+-    XSetClassHint(DADisplay, DALeader, classHint);
++
++    if (d_windowed)
++    	XSetClassHint(DADisplay, DAWindow, classHint);
++    else
++        XSetClassHint(DADisplay, DALeader, classHint);
+     XFree(classHint);
+     
+     /* Set WMHints */
+@@ -79,25 +175,40 @@
+     
+     wmHints->flags = IconWindowHint|WindowGroupHint;
+     
+-    if (!d_windowed) {
+-    	wmHints->flags |= StateHint;
+-    	wmHints->initial_state = WithdrawnState;
++    status = XStringListToTextProperty(&progName, 1, &title);
++    XSetWMName(DADisplay, DAWindow, &title);
++    XSetWMName(DADisplay, DALeader, &title);
++
++    if (d_windowed) {
++	wmHints->icon_window = DALeader;
++	wmHints->window_group = DAWindow;
++	
++	XSetWMHints(DADisplay, DAWindow, wmHints);
++	
++	/* Set Command to start the app so it can be docked properly */
++	XSetCommand(DADisplay, DAWindow, argv, argc);
++    } else {
++	wmHints->flags |= StateHint | IconPositionHint;
++	wmHints->initial_state = WithdrawnState;
++	
++	wmHints->icon_window = DAWindow;
++	wmHints->window_group = DALeader;
++	
++        XSetWMHints(DADisplay, DALeader, wmHints);
++	
++	/* Set Command to start the app so it can be docked properly */
++	XSetCommand(DADisplay, DAWindow, argv, argc);
+     }
+     
+-    wmHints->window_group = DALeader;
+-    wmHints->icon_window = DAWindow;
+-    
+-    XSetWMHints(DADisplay, DALeader, wmHints);
+-    
+-    /* Set Command to start the app so it can be docked properly */
+-    XSetCommand(DADisplay, DALeader, argv, argc);
+-    
+     DADepth	= DefaultDepth(DADisplay, DefaultScreen(DADisplay));
+     DAVisual	= DefaultVisual(DADisplay, DefaultScreen(DADisplay));
+     DAGC	= DefaultGC(DADisplay, DefaultScreen(DADisplay));
+     gcv.graphics_exposures = False;
+     XChangeGC(DADisplay, DAGC, GCGraphicsExposures, &gcv);
+-    
++
++    if (d_windowed)
++	XMapWindow(DADisplay, DAWindow);    
++
+     XFlush(DADisplay);
+ }
+ 
+diff -r --unified libdockapp-0.4.0/src/dapixmap.c libdockapp-0.4.0.new/src/dapixmap.c
+--- libdockapp-0.4.0/src/dapixmap.c	Fri Feb 18 13:14:23 2000
++++ libdockapp-0.4.0.new/src/dapixmap.c	Wed Jul 25 17:39:10 2001
+@@ -34,6 +34,8 @@
+ {
+     XShapeCombineMask(DADisplay, DAWindow, ShapeBounding, -x_ofs, -y_ofs, shapeMask,
+ 	    ShapeSet);
++    XShapeCombineMask(DADisplay, DALeader, ShapeBounding, -x_ofs, -y_ofs, shapeMask,
++	    ShapeSet);
+     XFlush(DADisplay);
+ }
+ 
+@@ -42,6 +44,8 @@
+ {
+     XSetWindowBackgroundPixmap(DADisplay, DAWindow, pixmap);
+     XClearWindow(DADisplay, DAWindow);
++    XSetWindowBackgroundPixmap(DADisplay, DALeader, pixmap);
++    XClearWindow(DADisplay, DALeader);
+     XFlush(DADisplay);
+ }
+ 
+diff -r --unified libdockapp-0.4.0/src/dockapp.h libdockapp-0.4.0.new/src/dockapp.h
+--- libdockapp-0.4.0/src/dockapp.h	Fri Mar 31 16:11:43 2000
++++ libdockapp-0.4.0.new/src/dockapp.h	Wed Jul 25 17:39:10 2001
+@@ -102,6 +102,7 @@
+ 
+ extern Display	*DADisplay;
+ extern Window	DAWindow;
++extern Window	DALeader;
+ extern int	DADepth;
+ extern Visual	*DAVisual;
+ extern GC	DAGC;
