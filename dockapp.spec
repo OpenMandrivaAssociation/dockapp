@@ -18,6 +18,11 @@ Source:		libdockapp-0.4.0.tar.bz2
 Patch1:		libdockapp-0.4.0.patch
 URL:		ftp://shadowmere.student.utwente.nl/pub/WindowMaker
 Group:		System/Libraries
+BuildRequires:	autoconf
+BuildRequires:	automake
+BuildRequires:	libtool-base
+BuildRequires:	slibtool
+BuildRequires:	make
 BuildRequires:	libx11-devel
 BuildRequires:	libxpm-devel
 BuildRequires:	libxext-devel
